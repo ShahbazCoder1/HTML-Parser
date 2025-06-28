@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz HTML Parser & CSV Exporter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Quiz HTML Parser</h1>
+            <p class="text-gray-600">Extract quiz data from HTML and export to CSV</p>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <label for="htmlInput" class="block text-lg font-semibold text-gray-700 mb-3">
+                Paste Quiz HTML Code:
+            </label>
+            <textarea 
+                id="htmlInput" 
+                class="w-full h-64 p-4 border-2 border-gray-300 rounded-lg resize-none focus:border-blue-500 focus:outline-none transition-colors font-mono text-sm"
+                placeholder="Paste your quiz HTML code here..."
+            ></textarea>
+            
+            <div class="flex gap-4 mt-4">
+                <button 
+                    id="parseBtn" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                >
+                    Parse Quiz Data
+                </button>
+                <button 
+                    id="clearBtn" 
+                    class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                >
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <div id="resultsSection" class="hidden">
+            <!-- Summary Cards -->
+            <!-- The following block is removed:
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                    <div class="text-3xl font-bold text-blue-600" id="questionCount">0</div>
+                    <div class="text-gray-600">Questions Found</div>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                    <div class="text-3xl font-bold text-green-600" id="optionCount">0</div>
+                    <div class="text-gray-600">Total Options</div>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6 text-center">
+                    <div class="text-3xl font-bold text-purple-600" id="explanationCount">0</div>
+                    <div class="text-gray-600">With Explanations</div>
+                </div>
+            </div>
+            -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold text-gray-800">Parsed Quiz Data</h2>
+                    <button 
+                        id="exportBtn" 
+                        class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Export CSV
+                    </button>
+                </div>
+                
+                <div id="dataPreview" class="overflow-x-auto">
+                   
+                </div>
+            </div>
+        </div>
+
+        
+        <div id="statusMessage" class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50">
+           
+        </div>
+    </div>
+
+    <script>
+        class QuizParser {
+            constructor() {
+                this.parsedData = [];
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('parseBtn').addEventListener('click', () => this.parseQuizData());
+                document.getElementById('clearBtn').addEventListener('click', () => this.clearInput());
+                
+            }
+
+            parseQuizData() {
+                const htmlInput = document.getElementById('htmlInput').value.trim();
+                
+                if (!htmlInput) {
+                    this.showStatus('Please paste HTML code first!', 'error');
+                    return;
+                }
+
+                try {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = htmlInput;
+                    
+                    const questions = tempDiv.querySelectorAll('.hdq_question');
+                    
+                    if (questions.length === 0) {
+                        this.showStatus('No quiz questions found in the HTML!', 'error');
+                        return;
+                    }
+
+                    this.parsedData = [];
+                    let totalOptions = 0;
+                    let questionsWithExplanations = 0;
+
+                    questions.forEach((questionEl, index) => {
+                        const questionData = this.extractQuestionData(questionEl, index + 1);
+                        totalOptions += questionData.options.length;
+                        if (questionData.explanation) questionsWithExplanations++;
+                        const questionRow = {
+                            question_id: questionData.id,
+                            question_number: questionData.number,
+                            question_text: questionData.text,
+                            explanation: questionData.explanation || '',
+                            images: questionData.images.join('; ') || '',
+                            weight: questionData.weight,
+                            options: questionData.options
+                        };
+                        this.parsedData.push(questionRow);
+                    });
+
+                    this.displayPreview();
+                    this.showResults();
+                    this.showStatus(`Successfully parsed ${questions.length} questions!`, 'success');
+
+                } catch (error) {
+                    console.error('Parsing error:', error);
+                    this.showStatus('Error parsing HTML. Please check the format.', 'error');
+                }
+            }
+
+            extractQuestionData(questionEl, questionNum) {
+               
+                const id = questionEl.id || `question_${questionNum}`;
+                
+                
+                const weight = questionEl.getAttribute('data-weight') || '1';
+                
+               
+                let questionText = '';
+                const questionHeading = questionEl.querySelector('.hdq_question_heading');
+                
+                
+                if (questionHeading) {
+                    const clonedHeading = questionHeading.cloneNode(true);
+                    const numberSpan = clonedHeading.querySelector('.hdq_question_number');
+                    if (numberSpan) numberSpan.remove();
+                    questionText = clonedHeading.textContent.trim();
+                }
+                
+               
+                const questionContent = [];
+                
+                
+                const headingIndex = Array.from(questionEl.children).indexOf(questionHeading);
+                for (let i = 0; i < headingIndex; i++) {
+                    const element = questionEl.children[i];
+                    
+                  
+                    const images = element.querySelectorAll('img');
+                    images.forEach(img => {
+                        const src = img.src || img.getAttribute('data-src');
+                        if (src) {
+                            questionContent.push(src);
+                        }
+                    });
+                    
+                    
+                    const textContent = element.textContent.trim();
+                    if (textContent && !element.querySelector('img')) {
+                        questionContent.push(textContent);
+                    }
+                }
+                
+               
+                const featuredImage = questionEl.querySelector('.hdq_question_featured_image img');
+                if (featuredImage) {
+                    const src = featuredImage.src || featuredImage.getAttribute('data-src');
+                    if (src) {
+                        questionContent.unshift(src);
+                    }
+                }
+                
+                
+                if (questionContent.length > 0) {
+                    if (questionText) {
+                        questionText = questionContent.join(' ') + ' ' + questionText;
+                    } else {
+                        questionText = questionContent.join(' ');
+                    }
+                }
+                
+                
+                if (!questionText) {
+                    const allText = questionEl.textContent.trim();
+                    const answersSection = questionEl.querySelector('.hdq_answers');
+                    const explanationSection = questionEl.querySelector('.hdq_question_after_text');
+                    
+                    let textBeforeAnswers = allText;
+                    if (answersSection) {
+                        const answersText = answersSection.textContent.trim();
+                        textBeforeAnswers = allText.replace(answersText, '').trim();
+                    }
+                    if (explanationSection) {
+                        const explanationText = explanationSection.textContent.trim();
+                        textBeforeAnswers = textBeforeAnswers.replace(explanationText, '').trim();
+                    }
+                    
+                    questionText = textBeforeAnswers.replace(/^#\d+\.\s*/, '').trim();
+                }
+
+                const options = [];
+                const optionElements = questionEl.querySelectorAll('.hdq_row');
+                
+                optionElements.forEach(row => {
+                    const optionText = row.querySelector('.hdq_aria_label')?.textContent.trim() || '';
+                    const isCorrect = row.classList.contains('hdq_correct');
+                    const input = row.querySelector('input');
+                    const value = input ? input.value : '0';
+                    
+                    if (optionText) {
+                        options.push({
+                            text: optionText,
+                            isCorrect: isCorrect || value === '1'
+                        });
+                    }
+                });
+
+                let explanation = '';
+                const explanationEl = questionEl.querySelector('.hdq_question_after_text');
+                if (explanationEl) {
+                    const clonedExplanation = explanationEl.cloneNode(true);
+                    const images = clonedExplanation.querySelectorAll('img');
+                    images.forEach(img => img.remove());
+                    explanation = clonedExplanation.textContent.trim().replace(/\s+/g, ' ');
+                }
+
+                const images = [];
+                const imageElements = questionEl.querySelectorAll('img');
+                imageElements.forEach(img => {
+                    const src = img.src || img.getAttribute('data-src');
+                    if (src) images.push(src);
+                });
+
+                return {
+                    id,
+                    number: questionNum,
+                    text: questionText,
+                    options,
+                    explanation,
+                    images,
+                    weight
+                };
+            }
+
+            displayPreview() {
+                const preview = document.getElementById('dataPreview');
+                
+                if (this.parsedData.length === 0) {
+                    preview.innerHTML = '<p class="text-gray-500">No data to display</p>';
+                    return;
+                }
+
+                const maxOptions = Math.max(...this.parsedData.map(q => q.options.length));
+
+                let html = `
+                    <table class="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Q#</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Question ID</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Question Text</th>`;
+
+                for (let i = 1; i <= maxOptions; i++) {
+                    html += `<th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Option ${i}</th>`;
+                }
+
+                html += `
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Correct</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Has Explanation</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Images</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                `;
+
+                this.parsedData.forEach((row, index) => {
+                    const correctOptions = row.options.filter(opt => opt.isCorrect).map(opt => opt.text);
+                    html += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 text-sm text-gray-900">${row.question_number}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900 font-mono">${row.question_id}</td>
+                            <td class="px-4 py-3 text-sm text-gray-900 max-w-xs truncate" title="${this.escapeHtml(row.question_text)}">${this.escapeHtml(row.question_text.substring(0, 100))}${row.question_text.length > 100 ? '...' : ''}</td>`;
+
+                    for (let i = 0; i < maxOptions; i++) {
+                        const option = row.options[i];
+                        const isCorrect = option && option.isCorrect;
+                        const cellClass = isCorrect ? 'bg-green-50' : '';
+                        html += `<td class="px-4 py-3 text-sm text-gray-900 max-w-xs truncate ${cellClass}" title="${option ? this.escapeHtml(option.text) : ''}">${option ? this.escapeHtml(option.text.substring(0, 60)) : ''}${option && option.text.length > 60 ? '...' : ''}</td>`;
+                    }
+
+                    html += `
+                            <td class="px-4 py-3 text-sm">
+                                <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800" title="${correctOptions.join('; ')}">
+                                    ${correctOptions.map(opt => opt.substring(0, 30) + (opt.length > 30 ? '...' : '')).join('; ')}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-center">
+                                ${row.explanation ? '<span class="text-green-600">✓</span>' : '<span class="text-gray-400">✗</span>'}
+                            </td>
+                            <td class="px-4 py-3 text-sm text-center">
+                                ${row.images ? '<span class="text-blue-600">✓</span>' : '<span class="text-gray-400">✗</span>'}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                preview.innerHTML = html;
+            }
+
+            showResults() {
+                const resultsSection = document.getElementById('resultsSection');
+                resultsSection.classList.remove('hidden');
+                resultsSection.classList.add('fade-in');
+                resultsSection.scrollIntoView({ behavior: 'smooth' });
+
+                const exportBtn = document.getElementById('exportBtn');
+                if (exportBtn) {
+                    exportBtn.onclick = () => this.exportToCSV();
+                }
+            }
+
+            normalizeText(text) {
+                return String(text == null ? '' : text)
+                    .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"') 
+                    .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'") 
+                    .replace(/[\u2013\u2014]/g, '-') 
+                    .replace(/\u2026/g, '...')
+                    .replace(/\u00A0/g, ' ') 
+                    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                    .replace(/[\u02C6]/g, '^')
+                    .replace(/[\u2039]/g, '<')
+                    .replace(/[\u203A]/g, '>')
+                    .replace(/[\u02DC]/g, '~')
+                    .replace(/[\u00AB]/g, '"')
+                    .replace(/[\u00BB]/g, '"')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+
+            exportToCSV() {
+                if (this.parsedData.length === 0) {
+                    this.showStatus('No data to export!', 'error');
+                    return;
+                }
+
+                
+                const maxOptions = Math.max(...this.parsedData.map(q => q.options.length));
+
+                const headers = [
+                    'question_id',
+                    'question_number', 
+                    'question_text'
+                ];
+
+               
+                for (let i = 1; i <= maxOptions; i++) {
+                    headers.push(`option_${i}`);
+                }
+
+                headers.push('correct_option', 'explanation', 'images', 'weight');
+
+                let csvContent = headers.join(',') + '\n';
+
+                this.parsedData.forEach(row => {
+                    const csvRow = [];
+                    
+                    
+                    csvRow.push(this.normalizeText(row.question_id));
+                    csvRow.push(this.normalizeText(row.question_number));
+                    csvRow.push(this.normalizeText(row.question_text));
+                    
+                    
+                    for (let i = 0; i < maxOptions; i++) {
+                        const option = row.options[i];
+                        csvRow.push(option ? this.normalizeText(option.text) : '');
+                    }
+                    
+                   
+                    const correctOptions = row.options.filter(opt => opt.isCorrect).map(opt => this.normalizeText(opt.text));
+                    csvRow.push(correctOptions.join('; '));
+                    
+                    csvRow.push(this.normalizeText(row.explanation));
+                    csvRow.push(this.normalizeText(row.images));
+                    csvRow.push(this.normalizeText(row.weight));
+
+                   
+                    const escapedRow = csvRow.map(value => {
+                        const stringValue = (value || '').toString();
+                        const escapedValue = stringValue.replace(/"/g, '""');
+                        return /[",\n\r]/.test(escapedValue) ? `"${escapedValue}"` : escapedValue;
+                    });
+                    
+                    csvContent += escapedRow.join(',') + '\n';
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `quiz_data_${new Date().getTime()}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                this.showStatus('CSV file downloaded successfully!', 'success');
+            }
+
+            clearInput() {
+                document.getElementById('htmlInput').value = '';
+                document.getElementById('resultsSection').classList.add('hidden');
+                this.parsedData = [];
+            }
+
+            showStatus(message, type) {
+                const statusDiv = document.getElementById('statusMessage');
+                const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+                
+                statusDiv.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 text-white ${bgColor}`;
+                statusDiv.textContent = message;
+                statusDiv.classList.remove('hidden');
+
+                setTimeout(() => {
+                    statusDiv.classList.add('hidden');
+                }, 3000);
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new QuizParser();
+        });
+    </script>
+</body>
+</html>
