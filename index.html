@@ -90,6 +90,39 @@
         <div id="statusMessage" class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50">
            
         </div>
+
+        <!-- Modal for filename input -->
+        <div id="filenameModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 w-96 mx-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Export CSV File</h3>
+                <div class="mb-4">
+                    <label for="filenameInput" class="block text-sm font-medium text-gray-700 mb-2">
+                        Enter filename (without extension):
+                    </label>
+                    <input 
+                        type="text" 
+                        id="filenameInput" 
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="quiz_data"
+                        value="quiz_data"
+                    >
+                </div>
+                <div class="flex gap-3 justify-end">
+                    <button 
+                        id="cancelExport" 
+                        class="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        id="confirmExport" 
+                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                        Export
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -352,8 +385,52 @@
 
                 const exportBtn = document.getElementById('exportBtn');
                 if (exportBtn) {
-                    exportBtn.onclick = () => this.exportToCSV();
+                    exportBtn.onclick = () => this.showFilenameModal();
                 }
+            }
+
+            showFilenameModal() {
+                const modal = document.getElementById('filenameModal');
+                const filenameInput = document.getElementById('filenameInput');
+                const cancelBtn = document.getElementById('cancelExport');
+                const confirmBtn = document.getElementById('confirmExport');
+
+                // Show modal
+                modal.classList.remove('hidden');
+                filenameInput.focus();
+                filenameInput.select();
+
+                // Handle cancel
+                cancelBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                };
+
+                // Handle confirm
+                confirmBtn.onclick = () => {
+                    const filename = filenameInput.value.trim();
+                    if (filename) {
+                        modal.classList.add('hidden');
+                        this.exportToCSV(filename);
+                    } else {
+                        this.showStatus('Please enter a filename!', 'error');
+                    }
+                };
+
+                // Handle Enter key
+                filenameInput.onkeydown = (e) => {
+                    if (e.key === 'Enter') {
+                        confirmBtn.click();
+                    } else if (e.key === 'Escape') {
+                        cancelBtn.click();
+                    }
+                };
+
+                // Handle click outside modal to close
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        modal.classList.add('hidden');
+                    }
+                };
             }
 
             normalizeText(text) {
@@ -374,73 +451,61 @@
                     .trim();
             }
 
-            exportToCSV() {
+            exportToCSV(customFilename = null) {
                 if (this.parsedData.length === 0) {
                     this.showStatus('No data to export!', 'error');
                     return;
                 }
 
-                
                 const maxOptions = Math.max(...this.parsedData.map(q => q.options.length));
-
                 const headers = [
                     'question_id',
                     'question_number', 
                     'question_text'
                 ];
-
-               
                 for (let i = 1; i <= maxOptions; i++) {
                     headers.push(`option_${i}`);
                 }
-
                 headers.push('correct_option', 'explanation', 'images', 'weight');
-
                 let csvContent = headers.join(',') + '\n';
 
                 this.parsedData.forEach(row => {
                     const csvRow = [];
-                    
-                    
                     csvRow.push(this.normalizeText(row.question_id));
                     csvRow.push(this.normalizeText(row.question_number));
                     csvRow.push(this.normalizeText(row.question_text));
-                    
-                    
                     for (let i = 0; i < maxOptions; i++) {
                         const option = row.options[i];
                         csvRow.push(option ? this.normalizeText(option.text) : '');
                     }
-                    
-                   
                     const correctOptions = row.options.filter(opt => opt.isCorrect).map(opt => this.normalizeText(opt.text));
                     csvRow.push(correctOptions.join('; '));
-                    
                     csvRow.push(this.normalizeText(row.explanation));
                     csvRow.push(this.normalizeText(row.images));
                     csvRow.push(this.normalizeText(row.weight));
 
-                   
                     const escapedRow = csvRow.map(value => {
                         const stringValue = (value || '').toString();
                         const escapedValue = stringValue.replace(/"/g, '""');
                         return /[",\n\r]/.test(escapedValue) ? `"${escapedValue}"` : escapedValue;
                     });
-                    
                     csvContent += escapedRow.join(',') + '\n';
                 });
+
+                // Use custom filename or default
+                const filename = customFilename ? `${customFilename}.csv` : `quiz_data_${new Date().getTime()}.csv`;
 
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 const url = URL.createObjectURL(blob);
                 link.setAttribute('href', url);
-                link.setAttribute('download', `quiz_data_${new Date().getTime()}.csv`);
+                link.setAttribute('download', filename);
                 link.style.visibility = 'hidden';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
 
-                this.showStatus('CSV file downloaded successfully!', 'success');
+                this.showStatus(`CSV file "${filename}" downloaded successfully!`, 'success');
             }
 
             clearInput() {
